@@ -108,6 +108,33 @@
   .slot-actions .btn { padding:6px 10px; font-size:10px; }
   .badge-now { font-family:var(--mono); font-size:9px; letter-spacing:.18em; background:var(--accent); color:#04121F; padding:2px 6px; font-weight:700; }
 
+
+  /* timeline */
+  .tl-wrap { overflow-x:auto; border:1px solid var(--border); padding:22px 0 10px; scrollbar-width:thin; scrollbar-color:var(--dim) transparent; }
+  .tl { position:relative; min-width:1120px; height:178px; margin:0 28px; }
+  .tl-day { position:absolute; top:0; bottom:0; width:12.5%; text-align:center; border-left:1px dashed var(--border); }
+  .tl-day:first-child { border-left:none; }
+  .tl-day .dw { font-family:var(--mono); font-size:10px; letter-spacing:.2em; color:var(--muted); font-weight:700; }
+  .tl-day .dt { font-size:15px; font-weight:700; margin-top:2px; }
+  .tl-day.today .dw, .tl-day.today .dt { color:var(--accent); }
+  .tl-track { position:absolute; left:0; right:0; top:78px; height:2px; background:var(--dim); }
+  .tl-fill { position:absolute; left:0; top:78px; height:2px; background:var(--accent); box-shadow:0 0 12px rgba(80,186,255,.6); transition:width .4s; }
+  .tl-now { position:absolute; top:56px; width:2px; height:32px; margin-left:-1px; background:var(--accent); }
+  .tl-now span { position:absolute; top:-15px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9px; letter-spacing:.18em; background:var(--accent); color:#04121F; padding:1px 5px; font-weight:700; white-space:nowrap; }
+  .tl-node { position:absolute; top:70px; width:18px; height:18px; margin-left:-9px; border-radius:50%; border:2px solid var(--accent); background:var(--bg); }
+  .tl-node.past { background:var(--accent); opacity:.55; }
+  .tl-node.now { background:var(--accent); box-shadow:0 0 0 0 rgba(80,186,255,.6); animation:pulseB 1.8s infinite; }
+  .tl-node.free { border-color:var(--warn); }
+  @keyframes pulseB { 70% { box-shadow:0 0 0 10px rgba(80,186,255,0);} 100% { box-shadow:0 0 0 0 rgba(80,186,255,0);} }
+  .tl-label { position:absolute; top:100px; width:76px; margin-left:-38px; text-align:center; }
+  .tl-label .t { font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--accent); font-weight:700; }
+  .tl-label .n { font-size:13px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tl-label .n.free { color:var(--warn); font-weight:500; }
+  .tl-label.past { opacity:.45; }
+  .tl-legend { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; font-family:var(--mono); font-size:10px; letter-spacing:.14em; color:var(--muted); text-transform:uppercase; }
+  .tl-legend i { display:inline-block; width:10px; height:10px; border-radius:50%; border:2px solid var(--accent); margin-right:7px; vertical-align:-1px; }
+  .tl-legend i.f { border-color:var(--warn); } .tl-legend i.p { background:var(--accent); opacity:.55; }
+
   /* team bar */
   .teambar { display:none; margin-bottom:22px; border:1px solid var(--accent); background:#0B1017; padding:14px 18px; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
   .teambar.on { display:flex; }
@@ -162,7 +189,18 @@
   <section class="section">
     <div class="sec-head">
       <div>
-        <div class="eyebrow">01 // CALENDARIO</div>
+        <div class="eyebrow">01 // LÍNEA DE TIEMPO</div>
+        <h2>24 NOV <span>→ 01 DIC</span></h2>
+      </div>
+    </div>
+    <div class="tl-wrap" id="tlWrap"><div class="tl" id="tl"></div></div>
+    <div class="tl-legend"><span><i></i>Dev asignado</span><span><i class="f"></i>Sin dev</span><span><i class="p"></i>Turno cumplido</span></div>
+  </section>
+
+  <section class="section">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">02 // CALENDARIO</div>
         <h2>TURNOS <span>DE GUARDIA</span></h2>
       </div>
       <div class="coverage">
@@ -353,6 +391,9 @@
     const counts = {}; equipo.forEach(n => counts[n] = 0); slots.forEach(s => { if (s.dev) counts[s.dev] = (counts[s.dev]||0) + 1; });
     $('chips').innerHTML = `<span class="chip lead-chip">${esc(delivery)} · Delivery Lead<b>Todos</b></span>` + Object.entries(counts).map(([n,c]) => `<span class="chip">${esc(n)}<b>${c}</b></span>`).join('');
 
+    // timeline
+    renderTimeline(slots, now);
+
     // days
     $('days').innerHTML = DIAS.map((d, i) => {
       const f = fmtDay(d);
@@ -365,6 +406,35 @@
     }).join('');
 
     $('updated').textContent = API ? 'Actualizado ' + new Date().toLocaleTimeString('es-CL',{timeZone:TZ, hour:'2-digit', minute:'2-digit'}) + ' · se refresca cada minuto' : 'Modo demo';
+  }
+
+  function renderTimeline(slots, now) {
+    if (!slots.length) return;
+    const pos = k => (Math.floor(k / 2) + (k % 2 ? 0.75 : 0.25)) / 8 * 100;
+    const ranges = slots.map(slotRange);
+    let p;
+    if (now.abs < ranges[0][0]) p = null;
+    else if (now.abs >= ranges[ranges.length - 1][1]) p = 100;
+    else {
+      const k = ranges.findIndex((r, i) => now.abs >= r[0] && (i === ranges.length - 1 || now.abs < ranges[i + 1][0]));
+      const nextStart = k === ranges.length - 1 ? ranges[k][1] : ranges[k + 1][0];
+      const nextPos = k === ranges.length - 1 ? 100 : pos(k + 1);
+      p = pos(k) + (now.abs - ranges[k][0]) / (nextStart - ranges[k][0]) * (nextPos - pos(k));
+    }
+    const short = { pre: '07–08', noche: '18–01' };
+    const days = DIAS.map((d, i) => { const f = fmtDay(d); return `<div class="tl-day ${now.date === d ? 'today' : ''}" style="left:${i * 12.5}%"><div class="dw">${f.dow}</div><div class="dt">${f.date}</div></div>`; }).join('');
+    const nodes = slots.map((s, k) => {
+      const [a, b] = ranges[k];
+      const st = now.abs >= b ? 'past' : (now.abs >= a ? 'now' : '');
+      const first = s.dev ? s.dev.split(' ')[0] : 'Libre';
+      return `<div class="tl-node ${st} ${s.dev ? '' : 'free'}" style="left:${pos(k)}%" title="${esc(s.dev || 'Sin dev')} · ${VENT[s.ventana].time}"></div>
+        <div class="tl-label ${st === 'past' ? 'past' : ''}" style="left:${pos(k)}%"><div class="t">${short[s.ventana]}</div><div class="n ${s.dev ? '' : 'free'}">${esc(first)}</div></div>`;
+    }).join('');
+    const nowMark = p !== null && p < 100 ? `<div class="tl-now" style="left:${p}%"><span>AHORA</span></div>` : '';
+    $('tl').innerHTML = days + '<div class="tl-track"></div>' + `<div class="tl-fill" style="width:${p || 0}%"></div>` + nodes + nowMark;
+    if (p !== null && !renderTimeline.scrolled) {
+      const w = $('tlWrap'); w.scrollLeft = Math.max(0, w.scrollWidth * p / 100 - w.clientWidth / 2); renderTimeline.scrolled = true;
+    }
   }
 
   function slotHTML(s, now, team, delivery) {
