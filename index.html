@@ -96,9 +96,13 @@
   .slot.past { opacity:.45; }
   .slot-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .slot-time { white-space:nowrap; font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--accent); font-weight:700; }
-  .slot-kind { font-family:var(--mono); font-size:9px; letter-spacing:.16em; color:var(--muted); text-transform:uppercase; }
+  .slot-kind { text-align:right; font-family:var(--mono); font-size:9px; letter-spacing:.16em; color:var(--muted); text-transform:uppercase; }
   .slot.noche .slot-time { color:var(--fg); }
   .who { font-size:16px; font-weight:700; }
+  .lead { font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--muted); }
+  .lead b { color:var(--violet); font-weight:700; }
+  .chip.lead-chip { border-color:var(--violet); }
+  .chip.lead-chip b { color:var(--violet); }
   .who.free { color:var(--warn); font-weight:500; font-size:14px; }
   .slot-actions { display:flex; gap:6px; }
   .slot-actions .btn { padding:6px 10px; font-size:10px; }
@@ -180,7 +184,7 @@
     <div class="days" id="days"></div>
 
     <div class="foot">
-      <span>1 persona por ventana · Delivery Lead disponible para escalamiento</span>
+      <span>1 dev por ventana, rotativo · Delivery Lead presente en todos los turnos</span>
       <span id="updated">—</span>
     </div>
   </section>
@@ -194,12 +198,13 @@
 (() => {
   const API = (window.GUARDIA_CONFIG && window.GUARDIA_CONFIG.API_URL || '').trim();
   const TZ = 'America/Santiago';
+  const DELIVERY_DEFAULT = 'Benjamín Beltran';
   const DIAS = ['2026-11-24','2026-11-25','2026-11-26','2026-11-27','2026-11-28','2026-11-29','2026-11-30','2026-12-01'];
   const DOW = ['DOM','LUN','MAR','MIÉ','JUE','VIE','SÁB'];
   const MES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
   const VENT = {
-    pre:   { label:'Pre-lanzamiento', time:'07:00 – 08:00', start:420, end:480 },
-    noche: { label:'Estabilización', time:'18:00 – 01:00', start:1080, end:1500 },
+    pre:   { label:'Soporte fuera de horario', time:'07:00 – 08:00', start:420, end:480 },
+    noche: { label:'Soporte fuera de horario', time:'18:00 – 01:00', start:1080, end:1500 },
   };
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -287,10 +292,21 @@
     return m ? `+56 ${m[1]} ${m[2]} ${m[3]}` : t;
   }
 
+  // names: tolerate "Mirco Fiocchi," or just "Jhonny" typed by hand in the Sheet
+  const fold = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  function canon(name, equipo) {
+    const clean = String(name || '').replace(/[\s,;.]+$/g, '').trim();
+    if (!clean) return '';
+    const f = fold(clean);
+    return equipo.find(n => fold(n) === f) || equipo.find(n => fold(n).startsWith(f + ' ') || fold(n).split(' ')[0] === f.split(' ')[0]) || clean;
+  }
+
   // ---------- render ----------
   function render() {
     const cfg = state.config || {};
-    const equipo = cfg.equipo || [];
+    const delivery = String(cfg.delivery || DELIVERY_DEFAULT).trim();
+    const equipo = (cfg.equipo || []).filter(n => fold(n) !== fold(delivery));
+    state.slots.forEach(s => { s.dev = canon(s.dev, equipo); });
     const team = !!key;
     $('demo').classList.toggle('on', !API);
     if (cfg.cliente) $('cliente').textContent = cfg.cliente.toUpperCase();
@@ -317,7 +333,7 @@
     if (cur) {
       $('nowDot').className = 'dot'; $('nowLabel').textContent = 'En guardia ahora';
       $('nowName').textContent = cur.dev || 'Sin asignar';
-      $('nowMeta').textContent = `${VENT[cur.ventana].label} · ${VENT[cur.ventana].time}`;
+      $('nowMeta').textContent = `Con ${delivery} (Delivery Lead) · ${VENT[cur.ventana].time}`;
     } else {
       $('nowDot').className = 'dot off';
       if (first && now.abs < slotRange(first)[0]) $('nowLabel').textContent = 'La guardia aún no comienza';
@@ -335,7 +351,7 @@
     $('covNum').innerHTML = `${covered}<small>/${slots.length || 16}</small>`;
     $('covBar').style.width = (slots.length ? covered/slots.length*100 : 0) + '%';
     const counts = {}; equipo.forEach(n => counts[n] = 0); slots.forEach(s => { if (s.dev) counts[s.dev] = (counts[s.dev]||0) + 1; });
-    $('chips').innerHTML = Object.entries(counts).map(([n,c]) => `<span class="chip">${esc(n)}<b>${c}</b></span>`).join('');
+    $('chips').innerHTML = `<span class="chip lead-chip">${esc(delivery)} · Delivery Lead<b>Todos</b></span>` + Object.entries(counts).map(([n,c]) => `<span class="chip">${esc(n)}<b>${c}</b></span>`).join('');
 
     // days
     $('days').innerHTML = DIAS.map((d, i) => {
@@ -344,14 +360,14 @@
       const flag = i === 0 ? '<span class="flag">INICIO 08:00</span>' : i === DIAS.length-1 ? '<span class="flag end">CIERRE 23:59</span>' : '';
       return `<div class="day ${now.date === d ? 'today' : ''}">
         <div class="day-head"><div><div class="dow">${f.dow}</div><div class="date">${f.date}</div></div>${flag}</div>
-        ${daySlots.map(s => slotHTML(s, now, team)).join('')}
+        ${daySlots.map(s => slotHTML(s, now, team, delivery)).join('')}
       </div>`;
     }).join('');
 
     $('updated').textContent = API ? 'Actualizado ' + new Date().toLocaleTimeString('es-CL',{timeZone:TZ, hour:'2-digit', minute:'2-digit'}) + ' · se refresca cada minuto' : 'Modo demo';
   }
 
-  function slotHTML(s, now, team) {
+  function slotHTML(s, now, team, delivery) {
     const [a,b] = slotRange(s), v = VENT[s.ventana];
     const status = now.abs >= b ? 'past' : (now.abs >= a ? 'now' : '');
     const me = store.get('guardia_me');
@@ -362,7 +378,8 @@
     }
     return `<div class="slot ${s.ventana} ${status}">
       <div class="slot-top"><span class="slot-time">${v.time}</span>${status==='now' ? '<span class="badge-now">AHORA</span>' : `<span class="slot-kind">${v.label}</span>`}</div>
-      <div class="who ${s.dev ? '' : 'free'}">${s.dev ? esc(s.dev) : 'Libre'}</div>
+      <div class="who ${s.dev ? '' : 'free'}">${s.dev ? esc(s.dev) : 'Dev libre'}</div>
+      <div class="lead">+ <b>${esc(delivery)}</b> · Delivery</div>
       ${actions ? `<div class="slot-actions">${actions}</div>` : ''}
     </div>`;
   }
