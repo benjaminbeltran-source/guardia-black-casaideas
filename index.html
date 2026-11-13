@@ -275,6 +275,18 @@
     } finally { busy = false; render(); }
   }
 
+  // phone: "56912345678", "+56 9 1234 5678" or "912345678" -> "+56912345678"
+  function normPhone(v) {
+    let d = String(v || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.length === 9 && d[0] === '9') d = '56' + d;
+    return '+' + d;
+  }
+  function fmtPhone(t) {
+    const m = t.match(/^\+56(9)(\d{4})(\d{4})$/);
+    return m ? `+56 ${m[1]} ${m[2]} ${m[3]}` : t;
+  }
+
   // ---------- render ----------
   function render() {
     const cfg = state.config || {};
@@ -283,8 +295,9 @@
     $('demo').classList.toggle('on', !API);
     if (cfg.cliente) $('cliente').textContent = cfg.cliente.toUpperCase();
     if (cfg.evento) $('evento').textContent = cfg.evento.toUpperCase();
-    $('phone').textContent = cfg.telefono || '—';
-    $('callBtn').href = 'tel:' + (cfg.telefono || '').replace(/[^\d+]/g,'');
+    const tel = normPhone(cfg.telefono);
+    $('phone').textContent = tel ? fmtPhone(tel) : '—';
+    $('callBtn').href = 'tel:' + tel;
     const wa = (cfg.whatsapp || cfg.telefono || '').replace(/\D/g,'');
     $('waBtn').href = 'https://wa.me/' + wa;
     $('waBtn').style.display = wa ? '' : 'none';
